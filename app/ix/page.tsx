@@ -47,9 +47,15 @@ import {
   IdlInstructionAccount,
   IdlType,
 } from "@coral-xyz/anchor/dist/cjs/idl";
+import {
+  getAllInstructions,
+  InstructionArgumentNode,
+  InstructionNode,
+} from "codama";
+import { cn } from "@/lib/utils";
 
 export default function InstructionBuilderPage() {
-  const { program, programDetails } = useProgramStore();
+  const { program, programDetails, codamaProgram } = useProgramStore();
   const { publicKey, sendTransaction } = useWallet();
 
   const [selectedIx, setSelectedIx] = useState<string>("");
@@ -62,7 +68,11 @@ export default function InstructionBuilderPage() {
   const [showError, setShowError] = useState(false);
 
   // Get instructions from the program IDL
-  const instructions = program?.idl?.instructions;
+  const instructions = useMemo(() => {
+    if (!codamaProgram) return [];
+    return getAllInstructions(codamaProgram);
+  }, [codamaProgram, program?.idl]);
+
   // Format instruction names for better display
   const formattedInstructions = useMemo(() => {
     return instructions
@@ -81,7 +91,7 @@ export default function InstructionBuilderPage() {
 
   const areArgsValid = useMemo(() => {
     if (!instruction) return false;
-    return instruction.args.every(
+    return instruction.arguments.every(
       (arg) => args[arg.name] !== undefined && args[arg.name] !== ""
     );
   }, [args, instruction]);
@@ -98,6 +108,13 @@ export default function InstructionBuilderPage() {
 
   const isFormValid = areArgsValid && areAccountsValid;
 
+  const userArgs: InstructionArgumentNode[] = useMemo(() => {
+    if (!instruction) return [];
+    return instruction.arguments.filter(
+      (arg) => arg.defaultValueStrategy !== "omitted"
+    );
+  }, [instruction]);
+
   const initialSelectedIx = useMemo(() => {
     return formattedInstructions.length > 0
       ? formattedInstructions[0].name
@@ -111,8 +128,8 @@ export default function InstructionBuilderPage() {
   }, [initialSelectedIx, selectedIx]);
 
   const processArgs = useCallback(
-    (currentArgs: Record<string, any>, ix: IdlInstruction) => {
-      return ix.args.map((arg) => {
+    (currentArgs: Record<string, any>, ix: InstructionNode) => {
+      return ix.arguments.map((arg) => {
         const value = currentArgs[arg.name];
         if (typeof arg.type === "string") {
           switch (arg.type) {
@@ -195,7 +212,7 @@ export default function InstructionBuilderPage() {
     if (instruction) {
       // Initialize args with default values
       const initialArgs: Record<string, any> = {};
-      instruction.args.forEach((arg) => {
+      instruction.arguments.forEach((arg) => {
         initialArgs[arg.name] = "";
       });
       setArgs(initialArgs);
@@ -353,7 +370,7 @@ export default function InstructionBuilderPage() {
                         )}
                         <div className="flex items-center gap-2 mt-2">
                           <Badge variant="outline" className="text-xs">
-                            {instruction.args.length} Args
+                            {userArgs.length} Args
                           </Badge>
                           <Badge variant="outline" className="text-xs">
                             {instruction.accounts.length} Accounts
@@ -406,17 +423,21 @@ export default function InstructionBuilderPage() {
                   </CardHeader>
                   <CardContent className="flex-1 overflow-y-auto px-6 pt-6 pb-6 space-y-6 min-h-0">
                     {/* Arguments Section */}
-                    {instruction.args.length > 0 && (
+                    {userArgs.length > 0 && (
                       <div>
                         <div className="flex items-center mb-4">
                           <Code className="h-5 w-5 mr-2 text-primary" />
                           <h3 className="text-lg font-medium">Arguments</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {instruction.args.map((arg) => (
+                          {userArgs.map((arg) => (
                             <div
                               key={arg.name}
-                              className="space-y-2 bg-muted/40 p-4 rounded-lg"
+                              className={cn(
+                                "space-y-2 bg-muted/40 p-4 rounded-lg",
+                                arg.defaultValueStrategy === "omitted" &&
+                                  "hidden"
+                              )}
                             >
                               <div className="flex items-center justify-between">
                                 <Label
@@ -429,9 +450,7 @@ export default function InstructionBuilderPage() {
                                   variant="outline"
                                   className="font-mono text-xs"
                                 >
-                                  {typeof arg.type === "string"
-                                    ? arg.type
-                                    : JSON.stringify(arg.type)}
+                                  {arg.type.kind.replaceAll("TypeNode", "")}
                                 </Badge>
                               </div>
                               <TypeInput
@@ -454,7 +473,7 @@ export default function InstructionBuilderPage() {
                       </div>
                     )}
 
-                    {instruction.args.length > 0 &&
+                    {instruction.arguments.length > 0 &&
                       instruction.accounts.length > 0 && (
                         <Separator className="my-6" />
                       )}
@@ -480,7 +499,7 @@ export default function InstructionBuilderPage() {
                                   {account.name}
                                 </Label>
                                 <div className="flex gap-1.5">
-                                  {"signer" in account && account.signer && (
+                                  {account.isSigner && (
                                     <Badge
                                       variant="secondary"
                                       className="font-normal text-xs"
@@ -488,24 +507,22 @@ export default function InstructionBuilderPage() {
                                       Signer
                                     </Badge>
                                   )}
-                                  {"writable" in account &&
-                                    account.writable && (
-                                      <Badge
-                                        variant="default"
-                                        className="font-normal text-xs"
-                                      >
-                                        Mutable
-                                      </Badge>
-                                    )}
-                                  {"optional" in account &&
-                                    account.optional && (
-                                      <Badge
-                                        variant="outline"
-                                        className="font-normal text-xs"
-                                      >
-                                        Optional
-                                      </Badge>
-                                    )}
+                                  {account.isWritable && (
+                                    <Badge
+                                      variant="default"
+                                      className="font-normal text-xs"
+                                    >
+                                      Mutable
+                                    </Badge>
+                                  )}
+                                  {account.isOptional && (
+                                    <Badge
+                                      variant="outline"
+                                      className="font-normal text-xs"
+                                    >
+                                      Optional
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex gap-2">

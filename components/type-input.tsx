@@ -3,9 +3,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { IdlType } from "@coral-xyz/anchor/dist/cjs/idl";
 import { PublicKey } from "@solana/web3.js";
+import { TypeNode } from "codama";
+import { camelToTitleCase } from "@/utils";
 
 interface TypeInputProps {
-  type: IdlType;
+  type: TypeNode;
   value: any;
   onChange: (value: any) => void;
   placeholder?: string;
@@ -45,212 +47,200 @@ export function TypeInput({
   };
 
   const renderInput = () => {
-    if (typeof type === "string") {
-      switch (type) {
-        case "bool":
-          return (
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="boolean-checkbox"
-                checked={!!value}
-                onCheckedChange={handleCheckboxChange}
-              />
-              <Label htmlFor="boolean-checkbox">
-                {value ? "True" : "False"}
-              </Label>
-            </div>
-          );
-        case "pubkey":
-          return (
-            <Input
-              type="text"
-              value={(value as string) || ""}
-              onChange={handlePublicKeyChange}
-              placeholder={placeholder || "Enter public key..."}
-              className={className}
-            />
-          );
-        case "u8":
-        case "i8":
-        case "u16":
-        case "i16":
-        case "u32":
-        case "i32":
-        case "u64":
-        case "i64":
-        case "u128":
-        case "i128":
-        case "u256":
-        case "i256":
-          return (
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={value ?? ""}
-              onChange={handleNumberChange}
-              placeholder={placeholder || `Enter ${type} value...`}
-              className={className}
-            />
-          );
-        case "f32":
-        case "f64":
-          return (
-            <Input
-              type="number"
-              step="any"
-              value={value ?? ""}
-              onChange={handleChange}
-              placeholder={placeholder || `Enter ${type} value...`}
-              className={className}
-            />
-          );
-        case "string":
-          return (
-            <Input
-              type="text"
-              value={value || ""}
-              onChange={handleChange}
-              placeholder={placeholder || "Enter text..."}
-              className={className}
-            />
-          );
-        default:
-          return (
-            <Input
-              type="text"
-              value={value || ""}
-              onChange={handleChange}
-              placeholder={placeholder || `Enter ${type}...`}
-              className={className}
-            />
-          );
+    if (type.kind === "booleanTypeNode") {
+      return (
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="boolean-checkbox"
+            checked={!!value}
+            onCheckedChange={handleCheckboxChange}
+          />
+          <Label htmlFor="boolean-checkbox">{value ? "True" : "False"}</Label>
+        </div>
+      );
+    }
+
+    if (type.kind === "publicKeyTypeNode") {
+      return (
+        <Input
+          type="text"
+          value={(value as string) || ""}
+          onChange={handlePublicKeyChange}
+          placeholder={placeholder || "Enter public key..."}
+          className={className}
+        />
+      );
+    }
+
+    if (type.kind === "numberTypeNode") {
+      if (type.format === "f32" || type.format === "f64") {
+        return (
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={value ?? ""}
+            onChange={handleNumberChange}
+            placeholder={placeholder || `Enter ${type} value...`}
+            className={className}
+          />
+        );
+      } else {
+        return (
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={value ?? ""}
+            onChange={handleNumberChange}
+            placeholder={placeholder || `Enter ${type} value...`}
+            className={className}
+          />
+        );
       }
     }
 
-    // Handle complex types
-    if (typeof type === "object") {
-      if ("option" in type || "coption" in type) {
-        const innerType = "option" in type ? type.option : type.coption;
-        return (
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has-value"
-                checked={value !== undefined && value !== null}
-                onCheckedChange={(checked) => {
-                  if (checked) {
-                    onChange("");
-                  } else {
-                    onChange(undefined);
-                  }
-                }}
-              />
-              <Label htmlFor="has-value">
-                {value !== undefined && value !== null
-                  ? "Has value"
-                  : "No value"}
-              </Label>
-            </div>
-            {value !== undefined && value !== null && (
-              <div className="pl-6">
-                <TypeInput
-                  type={innerType}
-                  value={value}
-                  onChange={onChange}
-                  placeholder={placeholder}
-                  className={className}
-                />
-              </div>
-            )}
-          </div>
-        );
-      }
+    // TODO: better rendering for amountTypeNode
+    if (
+      (type.kind === "amountTypeNode" || type.kind === "solAmountTypeNode") &&
+      type.number.kind === "numberTypeNode"
+    ) {
+      return (
+        <TypeInput
+          type={type.number}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className={className}
+        />
+      );
+    }
 
-      if ("vec" in type || "array" in type) {
-        return (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Array Items</Label>
-              <button
-                type="button"
-                onClick={() => {
-                  const newArray = Array.isArray(value) ? [...value, ""] : [""];
-                  onChange(newArray);
-                }}
-                className="text-sm text-blue-500 hover:text-blue-700"
-              >
-                + Add Item
-              </button>
-            </div>
-            {Array.isArray(value) && value.length > 0 ? (
-              <div className="space-y-2 pl-4 border-l-2 border-gray-200">
-                {value.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-2">
-                    <TypeInput
-                      type={"vec" in type ? type.vec : type.array[0]}
-                      value={item}
-                      onChange={(newValue) => {
-                        const newArray = [...value];
-                        newArray[index] = newValue;
-                        onChange(newArray);
-                      }}
-                      placeholder={`Item ${index + 1}`}
-                      className="flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newArray = value.filter((_, i) => i !== index);
-                        onChange(newArray);
-                      }}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No items added yet
-              </p>
-            )}
-          </div>
-        );
-      }
+    if (type.kind === "stringTypeNode") {
+      return (
+        <Input
+          type="text"
+          value={value || ""}
+          onChange={handleChange}
+          placeholder={placeholder || "Enter text..."}
+          className={className}
+        />
+      );
+    }
 
-      if ("defined" in type) {
-        // For custom types, we'll just use a JSON input
-        return (
-          <div className="space-y-2">
-            <Label>
-              {typeof type.defined === "string"
-                ? type.defined
-                : JSON.stringify(type.defined)}
-            </Label>
-            <textarea
-              value={
-                typeof value === "string"
-                  ? value
-                  : JSON.stringify(value, null, 2)
-              }
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  onChange(parsed);
-                } catch {
-                  onChange(e.target.value);
+    // handle complex types
+    if (
+      type.kind === "optionTypeNode" ||
+      type.kind === "zeroableOptionTypeNode"
+    ) {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="has-value"
+              checked={value !== undefined && value !== null}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  onChange("");
+                } else {
+                  onChange(undefined);
                 }
               }}
-              placeholder={`Enter ${
-                typeof type.defined === "string" ? type.defined : "custom type"
-              } as JSON...`}
-              className="w-full min-h-[100px] p-2 border rounded-md font-mono text-sm"
             />
+            <Label htmlFor="has-value">
+              {value !== undefined && value !== null ? "Has value" : "No value"}
+            </Label>
           </div>
-        );
-      }
+          {value !== undefined && value !== null && (
+            <div className="pl-6">
+              <TypeInput
+                type={type.item}
+                value={value}
+                onChange={onChange}
+                placeholder={placeholder}
+                className={className}
+              />
+            </div>
+          )}
+        </div>
+      );
     }
+
+    if (type.kind === "arrayTypeNode") {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Array Items</Label>
+            <button
+              type="button"
+              onClick={() => {
+                const newArray = Array.isArray(value) ? [...value, ""] : [""];
+                onChange(newArray);
+              }}
+              className="text-sm text-blue-500 hover:text-blue-700"
+            >
+              + Add Item
+            </button>
+          </div>
+          {Array.isArray(value) && value.length > 0 ? (
+            <div className="space-y-2 pl-4 border-l-2 border-gray-200">
+              {value.map((item, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <TypeInput
+                    type={type.item}
+                    value={item}
+                    onChange={(newValue) => {
+                      const newArray = [...value];
+                      newArray[index] = newValue;
+                      onChange(newArray);
+                    }}
+                    placeholder={`Item ${index + 1}`}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newArray = value.filter((_, i) => i !== index);
+                      onChange(newArray);
+                    }}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No items added yet</p>
+          )}
+        </div>
+      );
+    }
+
+    if (type.kind === "definedTypeLinkNode") {
+      // For custom types, we'll just use a JSON input
+      return (
+        <div className="space-y-2">
+          <Label>{type.name}</Label>
+          <textarea
+            value={
+              typeof value === "string" ? value : JSON.stringify(value, null, 2)
+            }
+            onChange={(e) => {
+              try {
+                const parsed = JSON.parse(e.target.value);
+                onChange(parsed);
+              } catch {
+                onChange(e.target.value);
+              }
+            }}
+            placeholder={`Enter ${camelToTitleCase(type.name)} as JSON...`}
+            className="w-full min-h-[100px] p-2 border rounded-md font-mono text-sm"
+          />
+        </div>
+      );
+    }
+
+    // TODO: a bunch of types we can render better, just covering the Anchor types for now
+    console.warn("TypeInput: unhandled type", type);
 
     // Fallback for any unhandled types
     return (

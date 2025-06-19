@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { Program, Idl, AnchorProvider } from "@coral-xyz/anchor";
+import { getAllPrograms, ProgramNode } from "codama";
+import { AnchorIdl, rootNodeFromAnchor } from "@codama/nodes-from-anchor";
 import { Connection, Commitment, Cluster } from "@solana/web3.js";
 import { AnchorWallet } from "@jup-ag/wallet-adapter";
 import { persist } from "zustand/middleware";
@@ -8,6 +10,8 @@ import { persist } from "zustand/middleware";
  * Type representing a Solana program with any IDL
  */
 type AnyProgram = Program<Idl>;
+
+type CodamaProgram = ProgramNode;
 
 /**
  * Type for Solana commitment level
@@ -64,6 +68,11 @@ export interface ProgramState {
   program: AnyProgram | null;
 
   /**
+   * The active Codama program instance
+   */
+  codamaProgram: CodamaProgram | null;
+
+  /**
    * The Anchor provider for the active program
    */
   provider: AnchorProvider | null;
@@ -106,7 +115,7 @@ export interface ProgramState {
    * @returns The initialized program or null if initialization failed
    */
   initialize: (
-    idl: Idl,
+    idl: AnchorIdl,
     rpcUrl: string,
     wallet: AnchorWallet,
     commitment?: CommitmentLevel
@@ -162,6 +171,7 @@ const useProgramStore = create<ProgramState>()(
   persist(
     (set, get) => ({
       program: null,
+      codamaProgram: null,
       provider: null,
       connection: null,
       isInitialized: false,
@@ -170,7 +180,8 @@ const useProgramStore = create<ProgramState>()(
       programDetails: null,
 
       initialize: async (
-        idl: Idl,
+        // TODO: make this more flexible, can also be a Codama root
+        idl: AnchorIdl,
         rpcUrl: string,
         wallet: AnchorWallet,
         commitment: CommitmentLevel = DEFAULT_COMMITMENT
@@ -204,13 +215,18 @@ const useProgramStore = create<ProgramState>()(
 
           const program = new Program(idl, provider);
 
+          const rootNode = rootNodeFromAnchor(idl);
+          const codamaProgram = getAllPrograms(rootNode)[0];
+
+          console.log("[program-store] Codama program:", codamaProgram);
+
           // Determine cluster from RPC URL
           const cluster = getClusterFromRpcUrl(rpcUrl);
 
           // Create program details
           const programDetails: ProgramDetails = {
-            programId: program.programId.toString(),
-            name: idl.metadata?.name || "Anchor Program",
+            programId: rootNode.program.publicKey,
+            name: rootNode.program.name,
             rpcUrl,
             cluster,
             commitment,
@@ -222,6 +238,7 @@ const useProgramStore = create<ProgramState>()(
           set({
             isInitialized: true,
             program,
+            codamaProgram,
             provider,
             connection,
             programDetails,
@@ -306,7 +323,7 @@ const useProgramStore = create<ProgramState>()(
 
           // Reinitialize the program
           const program = await get().initialize(
-            idl,
+            idl as AnchorIdl,
             programDetails.rpcUrl,
             wallet,
             programDetails.commitment
@@ -364,7 +381,7 @@ const useProgramStore = create<ProgramState>()(
         ({
           programDetails: state.programDetails,
           isInitialized: state.isInitialized,
-        } as PersistedState),
+        }) as PersistedState,
     }
   )
 );

@@ -43,16 +43,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { TypeInput } from "@/components/type-input";
 import {
-  IdlInstruction,
-  IdlInstructionAccount,
-  IdlType,
-} from "@coral-xyz/anchor/dist/cjs/idl";
-import {
   getAllInstructions,
   InstructionArgumentNode,
   InstructionNode,
 } from "codama";
 import { cn } from "@/lib/utils";
+import { resolveInstructionAccounts } from "@/utils/resolveInstructionAccounts";
+import { Address } from "@solana/kit";
 
 export default function InstructionBuilderPage() {
   const { program, programDetails, codamaProgram } = useProgramStore();
@@ -71,7 +68,7 @@ export default function InstructionBuilderPage() {
   const instructions = useMemo(() => {
     if (!codamaProgram) return [];
     return getAllInstructions(codamaProgram);
-  }, [codamaProgram, program?.idl]);
+  }, [codamaProgram]);
 
   // Format instruction names for better display
   const formattedInstructions = useMemo(() => {
@@ -156,40 +153,42 @@ export default function InstructionBuilderPage() {
     []
   );
 
-  // Fetch resolved pubkeys using method builder
+  // Fetch resolved pubkeys using codama
   const fetchResolvedPubkeys = useCallback(async () => {
-    if (!program || !instruction || !publicKey) return;
+    if (!codamaProgram || !instruction || !publicKey) return;
 
     try {
-      // Create method builder with current args
-      const processedArgs = processArgs(args, instruction);
-      const methodBuilder = program.methods[instruction.name](...processedArgs);
-
-      // Get resolved pubkeys
-      const resolvedPubkeys = await methodBuilder.pubkeys();
+      // Get resolved accounts
+      const resolvedAccounts = await resolveInstructionAccounts(
+        codamaProgram,
+        instruction,
+        accounts as Record<string, Address>,
+        args,
+        publicKey!.toString() as Address
+      );
 
       // Update accounts with resolved pubkeys
       const updates: Record<string, string> = {};
 
-      for (const [accountName, pubkey] of Object.entries(resolvedPubkeys)) {
+      for (const [accountName, pubkey] of Object.entries(resolvedAccounts)) {
         if (pubkey) {
           updates[accountName] = pubkey.toString();
         }
       }
 
+      // Don't think we need this, Codama has the payer node that we use
       // Auto-populate signer accounts
-      const commonSigners = instruction.accounts.filter(
-        (acc) =>
-          "signer" in acc &&
-          acc.signer === true &&
-          ["authority", "payer", "signer"].some((name) =>
-            acc.name.toLowerCase().includes(name.toLowerCase())
-          )
-      ) as IdlInstructionAccount[];
+      // const commonSigners = instruction.accounts.filter(
+      //   (acc) =>
+      //     acc.isSigner &&
+      //     ["authority", "payer", "signer"].some((name) =>
+      //       acc.name.toLowerCase().includes(name.toLowerCase())
+      //     )
+      // ) as IdlInstructionAccount[];
 
-      for (const account of commonSigners) {
-        updates[account.name] = publicKey.toString();
-      }
+      // for (const account of commonSigners) {
+      //   updates[account.name] = publicKey.toString();
+      // }
 
       // Update accounts state if we have any resolved pubkeys
       if (Object.keys(updates).length > 0) {
@@ -201,6 +200,8 @@ export default function InstructionBuilderPage() {
   }, [program, instruction, args, publicKey, processArgs]);
 
   // Auto-populate accounts when instruction or args change
+  // TODO: this is missing accounts, but needs more sophisticated dependency handling
+  // eg if an account changes we should update the relevant PDA
   useEffect(() => {
     if (instruction && Object.keys(args).length > 0) {
       fetchResolvedPubkeys();

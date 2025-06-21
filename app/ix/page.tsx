@@ -15,6 +15,7 @@ import {
   XCircle,
   Rocket,
   Wallet as WalletIcon,
+  Shuffle,
 } from "lucide-react";
 import {
   Tooltip,
@@ -49,7 +50,14 @@ import {
 } from "codama";
 import { cn } from "@/lib/utils";
 import { resolveInstructionAccounts } from "@/utils/resolveInstructionAccounts";
-import { Address } from "@solana/kit";
+import {
+  Address,
+  generateKeyPairSigner,
+  getAddressFromPublicKey,
+  isAddress,
+  KeyPairSigner,
+} from "@solana/kit";
+import { IconArrowsRandom } from "@tabler/icons-react";
 
 export default function InstructionBuilderPage() {
   const { program, programDetails, codamaProgram } = useProgramStore();
@@ -89,17 +97,19 @@ export default function InstructionBuilderPage() {
   const areArgsValid = useMemo(() => {
     if (!instruction) return false;
     return instruction.arguments.every(
-      (arg) => args[arg.name] !== undefined && args[arg.name] !== ""
+      (arg) =>
+        (arg.defaultValueStrategy && arg.defaultValueStrategy === "omitted") ||
+        (args[arg.name] !== undefined && args[arg.name] !== "")
     );
   }, [args, instruction]);
 
   const areAccountsValid = useMemo(() => {
     if (!instruction) return false;
-    const requiredAccounts = instruction.accounts.filter(
-      (acc) => !("optional" in acc && acc.optional)
-    );
-    return requiredAccounts.every(
-      (acc) => accounts[acc.name] !== undefined && accounts[acc.name] !== ""
+
+    return instruction.accounts.every(
+      (acc) =>
+        acc.isOptional ||
+        (accounts[acc.name] !== undefined && isAddress(accounts[acc.name]))
     );
   }, [accounts, instruction]);
 
@@ -124,6 +134,7 @@ export default function InstructionBuilderPage() {
     }
   }, [initialSelectedIx, selectedIx]);
 
+  // TODO: probably make this just use bigint for all number nodes
   const processArgs = useCallback(
     (currentArgs: Record<string, any>, ix: InstructionNode) => {
       return ix.arguments.map((arg) => {
@@ -239,8 +250,18 @@ export default function InstructionBuilderPage() {
     setAccounts((prev) => ({ ...prev, [name]: value }));
   };
 
+  const [accountSigners, setAccountSigners] = useState<
+    Record<string, KeyPairSigner>
+  >({});
+
+  const handleCreateRandomKeypairSignerForAccount = async (name: string) => {
+    const signer = await generateKeyPairSigner();
+    setAccountSigners((prev) => ({ ...prev, [name]: signer }));
+    handleAccountChange(name, signer.address);
+  };
+
   const handleSubmit = async () => {
-    if (!program || !instruction || !publicKey) {
+    if (!program || !codamaProgram || !instruction || !publicKey) {
       setError("Program, instruction, or wallet not available");
       return;
     }
@@ -302,7 +323,7 @@ export default function InstructionBuilderPage() {
     }
   };
 
-  if (!program || !programDetails) {
+  if (!codamaProgram || !programDetails) {
     return <NoProgramFound />;
   }
 
@@ -560,6 +581,19 @@ export default function InstructionBuilderPage() {
                                       <Copy className="h-4 w-4" />
                                     </Button>
                                   )}
+
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() =>
+                                    handleCreateRandomKeypairSignerForAccount(
+                                      account.name
+                                    )
+                                  }
+                                  title="Use random account"
+                                >
+                                  <Shuffle className="h-4 w-4" />
+                                </Button>
                               </div>
                               {"docs" in account &&
                                 account.docs &&

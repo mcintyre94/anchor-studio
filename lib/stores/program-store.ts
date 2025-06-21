@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Program, Idl, AnchorProvider } from "@coral-xyz/anchor";
-import { getAllPrograms, ProgramNode } from "codama";
+import { getAllPrograms, ProgramNode, RootNode } from "codama";
 import { AnchorIdl, rootNodeFromAnchor } from "@codama/nodes-from-anchor";
 import { Connection, Commitment, Cluster } from "@solana/web3.js";
 import { AnchorWallet } from "@jup-ag/wallet-adapter";
@@ -119,14 +119,14 @@ export interface ProgramState {
     rpcUrl: string,
     wallet: AnchorWallet,
     commitment?: CommitmentLevel
-  ) => Promise<AnyProgram | null>;
+  ) => Promise<CodamaProgram | null>;
 
   /**
    * Reinitialize the program from stored state
    * @param wallet - The connected wallet
    * @returns The reinitialized program or null if reinitialization failed
    */
-  reinitialize: (wallet: AnchorWallet) => Promise<AnyProgram | null>;
+  reinitialize: (wallet: AnchorWallet) => Promise<CodamaProgram | null>;
 
   /**
    * Reset the store to its initial state
@@ -185,7 +185,7 @@ const useProgramStore = create<ProgramState>()(
         rpcUrl: string,
         wallet: AnchorWallet,
         commitment: CommitmentLevel = DEFAULT_COMMITMENT
-      ): Promise<AnyProgram | null> => {
+      ): Promise<CodamaProgram | null> => {
         try {
           // Reset any previous state
           set({
@@ -213,9 +213,16 @@ const useProgramStore = create<ProgramState>()(
           // Create program instance directly with the provider
           // This approach worked in the original implementation
 
-          const program = new Program(idl, provider);
+          // const program = new Program(idl, provider);
 
-          const rootNode = rootNodeFromAnchor(idl);
+          let rootNode: RootNode;
+          try {
+            rootNode = rootNodeFromAnchor(idl);
+          } catch (error) {
+            console.error("[program-store] Failed to create root node:", error);
+            throw new Error("Failed to create root node");
+          }
+
           const codamaProgram = getAllPrograms(rootNode)[0];
 
           console.log("[program-store] Codama program:", codamaProgram);
@@ -237,7 +244,7 @@ const useProgramStore = create<ProgramState>()(
           // Update state
           set({
             isInitialized: true,
-            program,
+            // program,
             codamaProgram,
             provider,
             connection,
@@ -245,7 +252,7 @@ const useProgramStore = create<ProgramState>()(
           });
           console.log("[program-store] Program initialized successfully");
 
-          return program;
+          return codamaProgram;
         } catch (error) {
           console.log("[program-store] Program initialization error:", error);
           let errorMessage = "Failed to initialize program";

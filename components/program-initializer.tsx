@@ -6,13 +6,13 @@ import useProgramStore from "@/lib/stores/program-store";
 
 export function ProgramInitializer() {
   const wallet = useAnchorWallet();
-  const { reinitialize, programDetails, program, isReinitializing } =
+  const { reinitialize, programDetails, codamaProgram, isReinitializing } =
     useProgramStore();
 
   useEffect(() => {
     // Only auto-reinitialize if we have a wallet AND program details,
     // but no program object, and we are not already reinitializing.
-    if (wallet && programDetails && !program && !isReinitializing) {
+    if (wallet && programDetails && !codamaProgram && !isReinitializing) {
       console.log(
         "[ProgramInitializer] Auto-reinitializing program with wallet"
       );
@@ -29,7 +29,7 @@ export function ProgramInitializer() {
           );
         });
     }
-  }, [wallet, programDetails, program, isReinitializing, reinitialize]);
+  }, [wallet, programDetails, codamaProgram, isReinitializing, reinitialize]);
 
   return null;
 }
